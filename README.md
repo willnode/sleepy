@@ -1,22 +1,23 @@
 # sleepy (WIP)
 
-This simple proxy creates a HTTP-based rate limit via an injected `sleepy-session` token, then applies rate limit based on configurable dynamic leaky bucket algorithm.
+This simple proxy creates a HTTP-based rate limit via an injected `sleepy-session` token, then applies rate limit based on configurable and a somewhat smarter leaky bucket algorithm.
 
-The rate limit is applied based on how long your server responds to a request. At a default configuration, it will *sleep* the request twice of TTFB, then as long as the identified request is not *greedy*, it will be as just fast.
+The rate limit is applied based on how long your server responds to a request. For fresh user with default configuration, it will *sleep* the request N duration of first request TTFB, then it will not do that again as long as the identified request is not *greedy*.
 
 Greedy in this term means the bucket didn't leak under the leaky bucket algorithm.
 
 This proxy shouldn't punish your regular visitors -- it's only punish crawlers who:
 
-- Doesn't keep the cookie
+- Don't keep the cookie
 - Visit things too fast
 - Frequently hit heavy endpoints
 
-Read [Design: Weight Scoring](#design-weight-scoring) for more info.
+The rate limit only messing with user cookies. No Javascript needed. Read [Design: Weight Scoring](#design-weight-scoring) for more info about the algorithm scoring.
 
 ## Usage
 
 ```sh
+git clone https://github.com/willnode/sleepy
 cargo build --release
 sudo mv target/release/sleepy /usr/local/bin
 sleepy --upstream localhost:4000
@@ -37,13 +38,11 @@ LIMIT_IDLE_RATE=200 # how much weight per second the limit rate is go down by no
 LIMIT_SPEND_RATE=3000 # how much weight per second the limit rate is go up by server time
 
 # if user weight > LIMIT_CAP, the excess sleep time is multiplied by this 
-# only accept int
-PENALTY_MULTIPLIER=1
+PENALTY_MULTIPLIER=1 # only accept int
 # if user detected dropping keys while using same IP, and weight > LIMIT_CAP,
 # how much additional last user weight is added to this new session?
 # if you dislike this feature (to promote VPN/bcoz behind CDN/want less memory), set this to 0
-# only accept int
-SCRAPER_MULTIPLIER=0
+SCRAPER_MULTIPLIER=0 # only accept int
 # accept bool, whether the limit weight is emitted as `X-Sleepy-Weight`
 EMIT_HEADERS=true
 
