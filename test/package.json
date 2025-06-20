@@ -1,6 +1,12 @@
 {
   "dependencies": {},
   "devDependencies": {
-    "bun-types": "^1.0.26"
+    "bun-types": "^1.2.16",
+    "@types/bun": "latest"
+  },
+  "name": "test",
+  "private": true,
+  "peerDependencies": {
+    "typescript": "^5"
   }
 }

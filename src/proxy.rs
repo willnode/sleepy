@@ -23,20 +23,9 @@ pub async fn proxy_handler(
     req: Request<hyper::body::Incoming>,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, Infallible> {
     let headers = req.headers();
-    let session_id = headers
-        .get("cookie")
-        .and_then(|c| c.to_str().ok())
-        .and_then(|cookie| {
-            cookie.split(';').find_map(|kv| {
-                let kv = kv.trim();
-                if kv.starts_with("proxy-session=") {
-                    Some(kv.trim_start_matches("proxy-session=").to_string())
-                } else {
-                    None
-                }
-            })
-        })
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let mut set_cookie_header = None;
+
+    let session_id = extract_cookie_or_set(headers, &mut set_cookie_header);
 
     {
         let mut visitors = VISITORS.lock();
@@ -57,12 +46,50 @@ pub async fn proxy_handler(
         }
     }
 
-    let resp = pool.map(|body| {
+    let mut resp = pool.map(|body| {
         let boxed: BoxBody<Bytes, hyper::Error> = BoxBody::new(body);
         boxed
     });
 
+    if let Some(set_cookie) = set_cookie_header {
+        resp.headers_mut().insert(
+            hyper::header::SET_COOKIE,
+            hyper::header::HeaderValue::from_str(&set_cookie).unwrap(),
+        );
+        set_cookie_header = None
+    }
+
     Ok(resp)
+}
+
+fn extract_cookie_or_set(
+    headers: &hyper::HeaderMap,
+    set_cookie_header: &mut Option<String>,
+) -> String {
+    let session_id = headers
+        .get("cookie")
+        .and_then(|c| c.to_str().ok())
+        .and_then(|cookie| {
+            cookie.split(';').find_map(|kv| {
+                let kv = kv.trim();
+                if kv.starts_with("proxy-session=") {
+                    Some(kv.trim_start_matches("proxy-session=").to_string())
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or_else(|| {
+            // Generate a new session ID and set a cookie valid for 1 month
+            let new_id = Uuid::new_v4().to_string();
+            let one_month = 60 * 60 * 24 * 30; // seconds
+            *set_cookie_header = Some(format!(
+                "proxy-session={}; Max-Age={}; Path=/; HttpOnly; SameSite=Strict",
+                new_id, one_month
+            ));
+            new_id
+        });
+    session_id
 }
 
 async fn do_the_proxy(

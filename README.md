@@ -38,8 +38,8 @@ EMIT_HEADERS=true
 # all rate limit units below in miliseconds
 LIMIT_CAP=20000 # how much computation time is allowed before penalty kicks in
 LIMIT_INITIAL=20000 # initial weight for new visitors, usually you want this the same as limit cap
-LIMIT_IDLE_RATE=1 # how much weight per milisecond the limit rate is go down by no traffic
-LIMIT_SPEND_RATE=3 # how much weight per milisecond the limit rate is go up by server spending
+LIMIT_IDLE_RATE=100 # how much weight per second the limit rate is go down by no traffic
+LIMIT_SPEND_RATE=3000 # how much weight per second the limit rate is go up by server time
 ```
 
 ## Design: Weight Scoring
@@ -49,3 +49,5 @@ Actually, this software is a (\*my) response of recently viral [AI Bot Firewall]
 In this concept, the proof of stake is in the cookies: As long as the cookie bearer is proven humane, the server bandwidth will not be throttled. You are proven to be human if you are not resource hungry.
 
 The currency of stake is measured in how fast the server response, which for me is pretty logical. If bots are swarming your server, the server will be definitely take longer to reply, which makes "the currency" expensive. In this way, during the peak DDOS, your legitimate users can enjoy your site unthrottled yet your server is gonna stay active.
+
+For technical rules, the weight is measured by how long the server send TTFB after all requests is sent. The weight will not be credit only if server sends 5xx or dropping the connection. Websocket connection will simply passthrough.
