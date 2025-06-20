@@ -1,23 +1,20 @@
-use std::collections::HashMap;
 use std::time::Duration;
 
+use dashmap::DashMap;
 use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
 use http_body_util::{Empty, Full};
 use hyper::body::{Bytes, Incoming};
-use hyper::{Error, Request, Response};
+use hyper::{Error, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
-use parking_lot::Mutex;
 use std::convert::Infallible;
 use tokio::net::TcpStream;
-use tokio::time::sleep;
 use uuid::Uuid;
 
 use crate::bucket::RateLimiter;
 
-pub static VISITORS: Lazy<Mutex<HashMap<String, RateLimiter>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+pub static VISITORS: Lazy<DashMap<String, RateLimiter>> = Lazy::new(|| DashMap::new());
 
 pub async fn proxy_handler(
     req: Request<hyper::body::Incoming>,
@@ -27,19 +24,25 @@ pub async fn proxy_handler(
 
     let session_id = extract_cookie_or_set(headers, &mut set_cookie_header);
 
-    {
-        let mut visitors = VISITORS.lock();
-        let limiter = visitors
-            .entry(session_id.clone())
-            .or_insert_with(RateLimiter::new);
-        drop(visitors);
-    }
-
     let pool: Response<Incoming>;
+    let mut duration = Duration::from_millis(0);
+    let mut weight: u32 = 0;
 
     match do_the_proxy(req).await {
-        Ok((p, _)) => {
+        Ok((p, e)) => {
             pool = p;
+            if pool.status() < StatusCode::INTERNAL_SERVER_ERROR {
+                let mut visitor = VISITORS.get_mut(&session_id);
+                if visitor.is_none() {
+                    VISITORS.insert(session_id.clone(), RateLimiter::new());
+                    visitor = VISITORS.get_mut(&session_id);
+                }
+                let mut val = visitor.unwrap();
+                let visitor = val.value_mut();
+                visitor.on_response(e);
+                duration = visitor.get_penalty_delay();
+                weight = visitor.get_budget();
+            }
         }
         Err(_) => {
             return Ok(Response::new(full("Bad gateway")));
@@ -51,12 +54,20 @@ pub async fn proxy_handler(
         boxed
     });
 
+    if !duration.is_zero() {
+        tokio::time::sleep(duration).await;
+    }
+
+     resp.headers_mut().insert(
+            "X-Sleepy-Weight",
+            hyper::header::HeaderValue::from_str(&weight.to_string()).unwrap(),
+        );
+
     if let Some(set_cookie) = set_cookie_header {
         resp.headers_mut().insert(
             hyper::header::SET_COOKIE,
             hyper::header::HeaderValue::from_str(&set_cookie).unwrap(),
         );
-        set_cookie_header = None
     }
 
     Ok(resp)
@@ -72,8 +83,8 @@ fn extract_cookie_or_set(
         .and_then(|cookie| {
             cookie.split(';').find_map(|kv| {
                 let kv = kv.trim();
-                if kv.starts_with("proxy-session=") {
-                    Some(kv.trim_start_matches("proxy-session=").to_string())
+                if kv.starts_with("sleepy-session=") {
+                    Some(kv.trim_start_matches("sleepy-session=").to_string())
                 } else {
                     None
                 }
@@ -84,7 +95,7 @@ fn extract_cookie_or_set(
             let new_id = Uuid::new_v4().to_string();
             let one_month = 60 * 60 * 24 * 30; // seconds
             *set_cookie_header = Some(format!(
-                "proxy-session={}; Max-Age={}; Path=/; HttpOnly; SameSite=Strict",
+                "sleepy-session={}; Max-Age={}; Path=/; HttpOnly; SameSite=Strict",
                 new_id, one_month
             ));
             new_id

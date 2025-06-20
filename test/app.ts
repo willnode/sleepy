@@ -1,17 +1,25 @@
-import { Readable } from "stream";
-
 setTimeout(() => {
     const server = Bun.serve({
         port: parseInt(process.env.PORT || '4000'),
-        fetch(request) {
-            const path = (new URL(request.url)).pathname;
-            if (path.startsWith("/ws")) {
-                console.log('SERVER incoming request');
-                if (this.upgrade(request)) {
+        idleTimeout: 100,
+        routes: {
+            '/': req => {
+                console.log('SERVER incoming /');
+                return new Response("Welcome to Bun!\n");
+            },
+            '/ws': req => {
+                console.log('SERVER incoming /ws');
+                if (this.upgrade(req)) {
                     return;
                 }
-            }
-            if (path.startsWith("/streaming")) {
+            },
+            '/sleep': async req => {
+                console.log('SERVER incoming /sleep');
+                await new Promise((resolve) => setTimeout(resolve, 5000)); // 5 second delay
+                return new Response("Welcome to Bun!\n");
+            },
+            '/streaming': req => {
+                console.log('SERVER incoming /streaming');
                 const stream = new ReadableStream({
                     // @ts-ignore
                     type: "direct",
@@ -33,10 +41,7 @@ setTimeout(() => {
                         "Transfer-Encoding": "chunked", // Optional, helps some clients
                     },
                 });
-            }
-
-            console.log(`SERVER responded from: ${request.url}`);
-            return new Response("Welcome to Bun!\n");
+            },
         },
         websocket: {
             open(ws) {
