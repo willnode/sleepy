@@ -20,16 +20,17 @@ The rate limit only messing with user cookies. No Javascript needed. Read [Desig
 git clone https://github.com/willnode/sleepy
 cargo build --release
 sudo mv target/release/sleepy /usr/local/bin
-sleepy --upstream localhost:4000
+sleepy
 ```
 
 ## Configuration
 
-Configurations by envars:
+Configurations by envars, all of these are the default:
 
 ```ini
 REDIS=redis:// # optional redis database, if not set will use in mem
-PORT=1238 # what port to bind, default is 8000
+UPSTREAM=127.0.0.1:4000 # where the target upstream listening
+TARGET=127.0.0.1:3000 # what address to bind
 
 # all rate limit units below in miliseconds
 LIMIT_CAP=20000 # how much computation time is allowed before penalty kicks in

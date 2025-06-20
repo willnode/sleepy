@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use std::env;
 use std::net::SocketAddr;
 
@@ -8,20 +9,18 @@ use tokio::net::TcpListener;
 
 use crate::proxy::proxy_handler;
 
-mod proxy;
 mod bucket;
+mod proxy;
 
+lazy_static! {
+    static ref TARGET: SocketAddr = get_env_adr("TARGET", SocketAddr::from(([127, 0, 0, 1], 3000)));
+    static ref UPSTREAM: SocketAddr =
+        get_env_adr("UPSTREAM", SocketAddr::from(([127, 0, 0, 1], 4000)));
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let port: u16 = env::var("PORT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(3000);
-
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-
-    let listener = TcpListener::bind(addr).await?;
+    let listener = TcpListener::bind(*TARGET).await?;
 
     // We start a loop to continuously accept incoming connections
     loop {
@@ -43,4 +42,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         });
     }
+}
+
+fn get_env_adr(key: &str, default: SocketAddr) -> SocketAddr {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }

@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use dashmap::DashMap;
 use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
@@ -9,10 +7,12 @@ use hyper::{Error, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use std::convert::Infallible;
+use std::time::Duration;
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
 use crate::bucket::RateLimiter;
+use crate::UPSTREAM;
 
 pub static VISITORS: Lazy<DashMap<String, RateLimiter>> = Lazy::new(|| DashMap::new());
 
@@ -58,10 +58,10 @@ pub async fn proxy_handler(
         tokio::time::sleep(duration).await;
     }
 
-     resp.headers_mut().insert(
-            "X-Sleepy-Weight",
-            hyper::header::HeaderValue::from_str(&weight.to_string()).unwrap(),
-        );
+    resp.headers_mut().insert(
+        "X-Sleepy-Weight",
+        hyper::header::HeaderValue::from_str(&weight.to_string()).unwrap(),
+    );
 
     if let Some(set_cookie) = set_cookie_header {
         resp.headers_mut().insert(
@@ -108,7 +108,7 @@ async fn do_the_proxy(
 ) -> Result<(Response<Incoming>, Duration), Error> {
     let start = tokio::time::Instant::now();
 
-    let stream = TcpStream::connect("localhost:4000").await.unwrap();
+    let stream = TcpStream::connect(*UPSTREAM).await.unwrap();
     let io = TokioIo::new(stream);
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
 
@@ -120,14 +120,13 @@ async fn do_the_proxy(
     });
 
     // The authority of our URL will be the hostname of the httpbin remote
-    let url = "http://localhost:4000".parse::<hyper::Uri>().unwrap();
-    let authority = url.authority().unwrap().clone();
+    let authority = req.headers().get("host").unwrap();
 
     // Create an HTTP request with an empty body and a HOST header
 
     let req = Request::builder()
         .uri(req.uri().clone())
-        .header(hyper::header::HOST, authority.as_str())
+        .header(hyper::header::HOST, authority.clone())
         .body(Empty::<Bytes>::new())
         .unwrap();
 

@@ -1,19 +1,18 @@
-// sleepy_proxy/src/bucket.rs
+use lazy_static::lazy_static;
 use std::env;
 use std::time::{Duration, Instant};
 
-use lazy_static::lazy_static;
-
-pub struct RateLimiter {
-    last_seen: Instant,
-    budget: u32,
-}
 lazy_static! {
     static ref LIMIT_INITIAL: u32 = get_env_u32("LIMIT_INITIAL", 20000);
     static ref LIMIT_IDLE_RATE: u32 = get_env_u32("LIMIT_IDLE_RATE", 200);
     static ref LIMIT_SPEND_RATE: u32 = get_env_u32("LIMIT_SPEND_RATE", 3000);
     static ref LIMIT_CAP: u32 = get_env_u32("LIMIT_CAP", 20000);
     static ref PENALTY_MULTIPLIER: u32 = get_env_u32("PENALTY_MULTIPLIER", 1);
+}
+
+pub struct RateLimiter {
+    last_seen: Instant,
+    budget: u32,
 }
 
 impl RateLimiter {
