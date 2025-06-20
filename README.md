@@ -14,6 +14,14 @@ This proxy shouldn't punish your regular visitors -- it's only punish crawlers w
 
 The rate limit only messing with user cookies. No Javascript needed. Read [Design: Weight Scoring](#design-weight-scoring) for more info about the algorithm scoring.
 
+## WIP
+
+Mostly, it's working based on basic tests except:
+
+- Websocket
+- Redis option
+- `SCRAPER_MULTIPLIER`
+
 ## Usage
 
 ```sh
